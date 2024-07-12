@@ -1,67 +1,71 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
 import pandas as pd
 import time
 
 # Lee el archivo Excel
-df = pd.read_excel('C:\Program Files\Sublime Merge\Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias\data\input\clientes.xlsx')
+df = pd.read_excel(r'C:\Program Files\Sublime Merge\Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias\data\input\clientes.xlsx')
 
 # Supongamos que las columnas son 'CUIT' y 'Contraseña'
 cuit_login_list = df['CUIT para ingresar'].tolist()
 cuit_represent_list = df['CUIT representado'].tolist()
 password_list = df['Contraseña'].tolist()
+download_list = df['Ubicacion Descarga'].tolist()
 
 # Configura el driver de Selenium    
 options = webdriver.ChromeOptions()
 options.add_argument("--start-maximized")
+options.add_argument("--disable-blink-features=AutomationControlled")
+
+# Inicializar driver
 driver = webdriver.Chrome(options=options)
 
 # Función para iniciar sesión y extraer datos
-def extraer_datos(cuit_ingresar, cuit_representado, password):
-
+def extraer_datos(cuit_ingresar, cuit_representado, password, ubicacion_descarga):
     driver.get('https://auth.afip.gob.ar/contribuyente_/login.xhtml')
     
-    # Encuentra los campos de CUIT y contraseña e inicia sesión
-    driver.find_element(By.ID, 'F1:username').send_keys(cuit_ingresar)
+    # Iniciar sesión
+    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:username'))).send_keys(cuit_ingresar)
     driver.find_element(By.ID, 'F1:btnSiguiente').click()
-    driver.find_element(By.ID, 'F1:password').send_keys(password)
+    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:password'))).send_keys(password)
     driver.find_element(By.ID, 'F1:btnIngresar').click()
 
-    # Agrega un tiempo de espera para cargar la página
     time.sleep(5)
     
-    # Espera a que el botón "Ver todos" sea visible y haz clic en él
-    wait = WebDriverWait(driver, 10)
-    ver_todos_button = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Ver todos")))
-    ver_todos_button.click()
-    
-    # Agrega un tiempo de espera para cargar la página
+    # Navegar y seleccionar el CUIT
+    WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.LINK_TEXT, "Ver todos"))).click()
     time.sleep(5)
-
-    # Escribir en el buscador el nombre del modulo
     driver.find_element(By.ID, 'buscadorInput').send_keys('SISTEMA DE CUENTAS TRIBUTARIAS')
-
-    # Agrega un tiempo de espera para cargar el modulo
     time.sleep(5)
+    WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.ID, 'rbt-menu-item-0'))).click()
+    time.sleep(10)
 
-    # Hacer click en modulo desplegado
-    wait = WebDriverWait(driver, 10)
-    modulo_button = wait.until(EC.element_to_be_clickable((By.ID, 'rbt-menu-item-0')))
-    modulo_button.click()
-
-    time.sleep(25)
+    # Cambiar a la pestaña del modulo SCT
+    window_handles = driver.window_handles
+    driver.switch_to.window(window_handles[-1])
     
-    # Hacer clic en el select para desplegar las opciones
-    select_element = driver.find_element(By.NAME, '$PropertySelection')
-    select_element.click()
+    # Seleccionar el CUIT representado del dropdown
+    try:
+        WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.NAME, "$PropertySelection"))).click()
+        select_element = Select(driver.find_element(By.NAME, "$PropertySelection"))
 
+        # Seleccionar la opción por su texto
+        desired_option_text = str(cuit_representado)
+        select_element.select_by_visible_text(desired_option_text)       
+    except Exception as e:
+        print(f"Error al seleccionar CUIT: {e}")
+        return 0
+
+    # Descargar archivo XLSX
+    driver.find_element(By.XPATH, "//a[@class='dt-button buttons-excel buttons-html5' and span[text()='Excel']]").click()
+
+    time.sleep(5)
     return 1
 
-# Itera sobre cada cliente
-for cuit_ingresar, cuit_representado, password in zip(cuit_login_list, cuit_represent_list,password_list):
-    faltas = extraer_datos(cuit_ingresar, cuit_representado, password)
+# Iterar sobre cada cliente
+for cuit_ingresar, cuit_representado, password, download in zip(cuit_login_list, cuit_represent_list, password_list, download_list):
+    faltas = extraer_datos(cuit_ingresar, cuit_representado, password, download)
     print(f'CUIT: {cuit_representado}, Faltas de presentación: {faltas}')
-
