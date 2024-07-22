@@ -1,4 +1,6 @@
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
@@ -13,17 +15,17 @@ import os
 import glob
 import xlwings as xw
 
-# Ruta a la carpeta con los CSV
+# Definir rutas a las carpetas y archivos
 input_folder_excel = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/Deudas"
 output_folder_csv = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/DeudasCSV"
 output_file_csv = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/Resumen_deudas.csv"
 output_file_xlsx = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/Resumen_deudas.xlsx"
-fecha_especifica = '2024-03-30'
+fecha_especifica = '2024-03-31'
 
-# Lee el archivo Excel
+# Leer el archivo Excel
 df = pd.read_excel(r'C:\Program Files\Sublime Merge\Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias\data\input\clientes.xlsx')
 
-# Supongamos que las columnas son 'CUIT' y 'Contraseña'
+# Suposición de nombres de columnas
 cuit_login_list = df['CUIT para ingresar'].tolist()
 cuit_represent_list = df['CUIT representado'].tolist()
 password_list = df['Contraseña'].tolist()
@@ -32,158 +34,151 @@ posterior_list = df['Posterior'].tolist()
 anterior_list = df['Anterior'].tolist()
 clientes_list = df['Cliente'].tolist()
 
-options = webdriver.ChromeOptions()
+# Configuración de opciones de Chrome
+options = Options()
 options.add_argument("--start-maximized")
 options.add_argument("--disable-blink-features=AutomationControlled")
 options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
 options.add_experimental_option("excludeSwitches", ["enable-automation"])
 options.add_experimental_option('useAutomationExtension', False)
 
-# Configurar preferencias para que siempre pregunte por la ubicación de descarga
+# Configurar preferencias de descarga
 prefs = {
-        "download.prompt_for_download": True,
-        "download.directory_upgrade": True,
-        "safebrowsing.enabled": True
-        }
+    "download.prompt_for_download": True,
+    "download.directory_upgrade": True,
+    "safebrowsing.enabled": True
+}
 options.add_experimental_option("prefs", prefs)
 
 # Inicializar driver
-driver = webdriver.Chrome(options=options)
-
-driver.get('https://auth.afip.gob.ar/contribuyente_/login.xhtml')
+service = Service(ChromeDriverManager().install())
+driver = webdriver.Chrome(service=service, options=options)
 
 def iniciar_sesion(cuit_ingresar, password):
-    # Borrar si ya hay algo escrito
-    element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:username')))
-    element.clear()
+    """Inicia sesión en el sitio web con el CUIT y contraseña proporcionados."""
+    try:
+        driver.get('https://auth.afip.gob.ar/contribuyente_/login.xhtml')
+        element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:username')))
+        element.clear()
+        time.sleep(5)
 
-    # Iniciar sesión
-    element.send_keys(cuit_ingresar)
-    driver.find_element(By.ID, 'F1:btnSiguiente').click()
-    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:password'))).send_keys(password)
-    driver.find_element(By.ID, 'F1:btnIngresar').click()
+        element.send_keys(cuit_ingresar)
+        driver.find_element(By.ID, 'F1:btnSiguiente').click()
+        time.sleep(5)
 
-    time.sleep(5)
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:password'))).send_keys(password)
+        time.sleep(5)
+        driver.find_element(By.ID, 'F1:btnIngresar').click()
+        time.sleep(5)
+    except Exception as e:
+        print(f"Error al iniciar sesión: {e}")
 
 def ingresar_modulo():
-    # Navegar y seleccionar el CUIT
-    WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.LINK_TEXT, "Ver todos"))).click()
-    time.sleep(5)
-    driver.find_element(By.ID, 'buscadorInput').send_keys('SISTEMA DE CUENTAS TRIBUTARIAS')
-    time.sleep(5)
-    WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.ID, 'rbt-menu-item-0'))).click()
-    time.sleep(10)
-
-    # Cambiar a la pestaña del modulo SCT
-    window_handles = driver.window_handles
-    driver.switch_to.window(window_handles[-1])
-    
-    # Verificar si hay un error de autenticación
+    """Ingresa al módulo específico del sistema de cuentas tributarias."""
     try:
-        error_message = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.TAG_NAME, 'pre')))
-        if error_message.text == "Ha ocurrido un error al autenticar, intente nuevamente.":
-            driver.refresh()
-    except:
-        pass
+        WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.LINK_TEXT, "Ver todos"))).click()
+        time.sleep(5)
+        driver.find_element(By.ID, 'buscadorInput').send_keys('SISTEMA DE CUENTAS TRIBUTARIAS')
+        time.sleep(5)
+        WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, 'rbt-menu-item-0'))).click()
+        time.sleep(10)
+
+        # Cambiar de pestaña
+        window_handles = driver.window_handles
+        driver.switch_to.window(window_handles[-1])
+
+        try:
+            error_message = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.TAG_NAME, 'pre')))
+            if error_message.text == "Ha ocurrido un error al autenticar, intente nuevamente.":
+                driver.refresh()
+                time.sleep(5)
+        except:
+            pass
+    except Exception as e:
+        print(f"Error al ingresar al módulo: {e}")
 
 def seleccionar_cuit_representado(cuit_representado):
+    """Selecciona el CUIT representado en el sistema."""
     try:
-        # Intentar seleccionar el CUIT representado del dropdown
         select_present = EC.presence_of_element_located((By.NAME, "$PropertySelection"))
         if WebDriverWait(driver, 5).until(select_present):
             current_selection = Select(driver.find_element(By.NAME, "$PropertySelection")).first_selected_option.text
             if current_selection != str(cuit_representado):
-                WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.NAME, "$PropertySelection"))).click()
                 select_element = Select(driver.find_element(By.NAME, "$PropertySelection"))
                 select_element.select_by_visible_text(str(cuit_representado))
     except Exception:
         try:
-            # Si no hay dropdown, verificar el CUIT del usuario
-            cuit_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'span.cuit')))
+            cuit_element = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'span.cuit')))
             cuit_text = cuit_element.text.replace('-', '')
             if cuit_text != str(cuit_representado):
                 print(f"El CUIT ingresado no coincide con el CUIT representado: {cuit_representado}")
-                return 0
+                return False
         except Exception as e:
             print(f"Error al verificar CUIT: {e}")
-            return 0
-    return 1
+            return False
+    return True
 
 def exportar_excel(ubicacion_descarga, cuit_representado, cliente, cantidad_faltas_presentacion):
-    # Descargar archivo XLSX
-    WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//*[@id='DataTables_Table_0_wrapper']/div[1]/a[2]/span"))).click()
+    """Descarga y guarda el archivo Excel en la ubicación especificada."""
+    try:       
+        # Exportar XLSX
+        WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, "//*[@id='DataTables_Table_0_wrapper']/div[1]/a[2]/span"))).click()
+        time.sleep(5)
 
-    # Esperar a que aparezca el cuadro de diálogo de guardar archivo
-    time.sleep(5) 
-
-    # Simular la interacción con el cuadro de diálogo de guardar archivo usando pyautogui
-    ubicacion = ubicacion_descarga
-    nombre_archivo = f"{cuit_representado}- {cliente} - {cantidad_faltas_presentacion} - Deudas"
-
-    # Escribir el nombre del archivo 
-    pyautogui.write(nombre_archivo)
-    time.sleep(1)
-
-    # Cambiar a ubicacion       
-    pyautogui.hotkey('alt', 'd')
-    time.sleep(0.5)
-
-    # Escribir la ubicación de descarga
-    pyautogui.write(ubicacion)
-    time.sleep(1)
-    pyautogui.press('enter')
-    time.sleep(1)
-    
-    # Activar el botón "Guardar"
-    pyautogui.hotkey('alt', 't')
-    time.sleep(1)
-
-    # Confirmar el guardado
-    pyautogui.press('enter')
-   
-    time.sleep(1)
+        # Guardarlo con nombre y carpeta especifica
+        
+        nombre_archivo = f"{cuit_representado}- {cliente} - {cantidad_faltas_presentacion} - Deudas"
+        pyautogui.write(nombre_archivo)
+        time.sleep(1)
+        pyautogui.hotkey('alt', 'd')
+        time.sleep(0.5)
+        pyautogui.write(ubicacion_descarga)
+        time.sleep(1)
+        pyautogui.press('enter')
+        time.sleep(1)
+        pyautogui.hotkey('alt', 't')
+        time.sleep(1)
+        pyautogui.press('enter')
+        time.sleep(1)
+    except Exception as e:
+        print(f"Error al exportar el archivo Excel: {e}")
 
 def cerrar_sesion():
-    # Cerrar pestaña de modulo
-    driver.close()
+    """Cierra la sesión actual."""
+    try:
+        driver.close()
+        window_handles = driver.window_handles
+        driver.switch_to.window(window_handles[0])
+        driver.find_element(By.ID, "iconoChicoContribuyenteAFIP").click()
+        driver.find_element(By.XPATH, '//*[@id="contBtnContribuyente"]/div[6]/button/div/div[2]').click()
+        time.sleep(5)
+    except Exception as e:
+        print(f"Error al cerrar sesión: {e}")
 
-    # Cambiar a pestaña principal
-    window_handles = driver.window_handles
-    driver.switch_to.window(window_handles[0])
-
-    # Cerrar sesion
-    driver.find_element(By.ID, "iconoChicoContribuyenteAFIP").click()
-    driver.find_element(By.XPATH, '//*[@id="contBtnContribuyente"]/div[6]/button/div/div[2]').click()
-
-    time.sleep(5)
-
-# Función para iniciar sesión y extraer datos
 def extraer_datos_nuevo(cuit_ingresar, cuit_representado, password, ubicacion_descarga, posterior, cliente):
-    iniciar_sesion(cuit_ingresar, password)
-    ingresar_modulo()
-    seleccionar_cuit_representado(cuit_representado)
-
-    # Obtener cantidad de faltas de presentacion
-    cantidad_faltas_presentacion = driver.find_element(By.NAME, "functor$1").get_attribute('value')
-
-    exportar_excel(ubicacion_descarga, cuit_representado, cliente, cantidad_faltas_presentacion)
-
-    # Controlar si cerrar sesion o no en base al posterior
-    if posterior == 0:
-        cerrar_sesion()
-    
-    return cantidad_faltas_presentacion
+    """Extrae datos para un nuevo usuario."""
+    try:
+        iniciar_sesion(cuit_ingresar, password)
+        ingresar_modulo()
+        if seleccionar_cuit_representado(cuit_representado):
+            cantidad_faltas_presentacion = driver.find_element(By.NAME, "functor$1").get_attribute('value')
+            exportar_excel(ubicacion_descarga, cuit_representado, cliente, cantidad_faltas_presentacion)
+            if posterior == 0:
+                cerrar_sesion()
+            return cantidad_faltas_presentacion
+    except Exception as e:
+        print(f"Error al extraer datos para el nuevo usuario: {e}")
 
 def extraer_datos(cuit_representado, ubicacion_descarga, posterior, cliente):
-    seleccionar_cuit_representado(cuit_representado)
-
-    # Obtener cantidad de faltas de presentacion
-    cantidad_faltas_presentacion = driver.find_element(By.NAME, "functor$1").get_attribute('value')
-    exportar_excel(ubicacion_descarga, cuit_representado, cliente, cantidad_faltas_presentacion)
-
-    # Controlar si cerrar sesion o no en base al posterior
-    if posterior == 0:
-        cerrar_sesion()
+    """Extrae datos para un usuario existente."""
+    try:
+        if seleccionar_cuit_representado(cuit_representado):
+            cantidad_faltas_presentacion = driver.find_element(By.NAME, "functor$1").get_attribute('value')
+            exportar_excel(ubicacion_descarga, cuit_representado, cliente, cantidad_faltas_presentacion)
+            if posterior == 0:
+                cerrar_sesion()
+    except Exception as e:
+        print(f"Error al extraer datos: {e}")
 
 # Crear el archivo de resultados
 resultados = []
@@ -192,7 +187,7 @@ resultados = []
 for cuit_ingresar, cuit_representado, password, download, posterior, anterior, cliente in zip(cuit_login_list, cuit_represent_list, password_list, download_list, posterior_list, anterior_list, clientes_list):
     if anterior == 0:
         extraer_datos_nuevo(cuit_ingresar, cuit_representado, password, download, posterior, cliente)
-    else: 
+    else:
         extraer_datos(cuit_representado, download, posterior, cliente)
 
 # Crear la carpeta de salida para CSV si no existe
@@ -235,7 +230,6 @@ def obtener_faltas_presentacion(filename):
 
 # Convertir archivos Excel a CSV
 excel_a_csv(input_folder_excel, output_folder_csv)
-
 
 # Lista para almacenar los DataFrames
 df_list = []
@@ -306,7 +300,7 @@ if df_list:
     # Guardar el DataFrame final en un nuevo archivo XLSX
     df_resumen.to_excel(output_file_xlsx, index=False, engine='openpyxl')
 
-    # Cargar el archivo XLSX para formatear celdas
+    # Lógica para cargar el archivo XLSX y aplicar el formateo
     wb = load_workbook(output_file_xlsx)
     ws = wb.active
 
@@ -320,11 +314,23 @@ if df_list:
             if cell.column in [7, 8, 9, 10]:  # Columnas de valores numéricos
                 cell.number_format = '#,##0.00'
 
+    # Determinar la última fila con datos en cualquier columna
+    last_row = ws.max_row 
+    for row in reversed(range(1, ws.max_row + 1)):
+        for col in range(1, ws.max_column + 1):
+            if ws.cell(row=row, column=col).value is not None:
+                last_row = row
+                break
+        if last_row != ws.max_row:
+            break
+            
+    last_row = last_row + 100
+
     # Combinar celdas y aplicar estilos adicionales
-    max_row = ws.max_row
     current_cliente = None
     start_row = 2
-    for row in range(2, max_row + 1):
+
+    for row in range(2, last_row + 1):
         if ws[f'A{row}'].value != current_cliente:
             if current_cliente is not None:
                 end_row = row - 1
@@ -338,17 +344,28 @@ if df_list:
                     ws[f'A{start_row}'].alignment = Alignment(horizontal='center', vertical='center')
                     ws[f'J{start_row}'].alignment = Alignment(horizontal='center', vertical='center')
                     ws[f'K{start_row}'].alignment = Alignment(horizontal='center', vertical='center')
+
+                    # Insertar fila en blanco y colorear en lila claro
+                    ws.insert_rows(end_row + 1)
+                    for col in range(1, ws.max_column + 1):
+                        ws.cell(row=end_row + 1, column=col).fill = PatternFill(start_color='E6E6FA', end_color='E6E6FA', fill_type='solid')
+
             current_cliente = ws[f'A{row}'].value
             start_row = row
 
-    if start_row <= max_row:
-        # Combinar celdas para el último cliente
-        ws.merge_cells(start_row=start_row, start_column=1, end_row=max_row, end_column=1)
-        ws.merge_cells(start_row=start_row, start_column=10, end_row=max_row, end_column=10)
-        ws.merge_cells(start_row=start_row, start_column=11, end_row=max_row, end_column=11)
-        ws[f'A{start_row}'].alignment = Alignment(horizontal='center', vertical='center')
-        ws[f'J{start_row}'].alignment = Alignment(horizontal='center', vertical='center')
-        ws[f'K{start_row}'].alignment = Alignment(horizontal='center', vertical='center')
+    # Manejar la última sección de filas del último cliente
+    if current_cliente is not None:
+        end_row = last_row
+        if start_row <= end_row:
+            # Combinar celdas para 'Nombre del cliente'
+            ws.merge_cells(start_row=start_row, start_column=1, end_row=end_row, end_column=1)
+            # Combinar celdas para 'Total deuda'
+            ws.merge_cells(start_row=start_row, start_column=10, end_row=end_row, end_column=10)
+            # Combinar celdas para 'Cantidad de faltas de presentación'
+            ws.merge_cells(start_row=start_row, start_column=11, end_row=end_row, end_column=11)
+            ws[f'A{start_row}'].alignment = Alignment(horizontal='center', vertical='center')
+            ws[f'J{start_row}'].alignment = Alignment(horizontal='center', vertical='center')
+            ws[f'K{start_row}'].alignment = Alignment(horizontal='center', vertical='center')
 
     # Ajustar el ancho de las columnas
     for col in ws.columns:
