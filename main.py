@@ -16,14 +16,14 @@ import glob
 import xlwings as xw
 
 # Definir rutas a las carpetas y archivos
-input_folder_excel = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/Deudas"
-output_folder_csv = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/DeudasCSV"
-output_file_csv = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/Resumen_deudas.csv"
-output_file_xlsx = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/Resumen_deudas.xlsx"
+input_folder_excel = "C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/Deudas"
+output_folder_csv = "C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/DeudasCSV"
+output_file_csv = "C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/Resumen_deudas.csv"
+output_file_xlsx = "C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/Resumen_deudas.xlsx"
 fecha_especifica = '2024-03-31'
 
 # Leer el archivo Excel
-df = pd.read_excel(r'C:\Program Files\Sublime Merge\Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias\data\input\clientes.xlsx')
+df = pd.read_excel(r'C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/clientes.xlsx')
 
 # Suposición de nombres de columnas
 cuit_login_list = df['CUIT para ingresar'].tolist()
@@ -54,7 +54,7 @@ options.add_experimental_option("prefs", prefs)
 service = Service(ChromeDriverManager().install())
 driver = webdriver.Chrome(service=service, options=options)
 
-def iniciar_sesion(cuit_ingresar, password):
+def iniciar_sesion(cuit_ingresar, password, row_index):
     """Inicia sesión en el sitio web con el CUIT y contraseña proporcionados."""
     try:
         driver.get('https://auth.afip.gob.ar/contribuyente_/login.xhtml')
@@ -66,12 +66,39 @@ def iniciar_sesion(cuit_ingresar, password):
         driver.find_element(By.ID, 'F1:btnSiguiente').click()
         time.sleep(5)
 
+        # Verificar si el CUIT es incorrecto
+        try:
+            error_message = driver.find_element(By.ID, 'F1:msg').text
+            if error_message == "Número de CUIL/CUIT incorrecto":
+                actualizar_excel(row_index, "Número de CUIL/CUIT incorrecto")
+                return False
+        except:
+            pass
+
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:password'))).send_keys(password)
         time.sleep(5)
         driver.find_element(By.ID, 'F1:btnIngresar').click()
         time.sleep(5)
+
+        # Verificar si la contraseña es incorrecta
+        try:
+            error_message = driver.find_element(By.ID, 'F1:msg').text
+            if error_message == "Clave o usuario incorrecto":
+                actualizar_excel(row_index, "Clave o usuario incorrecto")
+                return False
+        except:
+            pass
+
+        return True
     except Exception as e:
         print(f"Error al iniciar sesión: {e}")
+        actualizar_excel(row_index, "Error al iniciar sesión")
+        return False
+
+def actualizar_excel(row_index, mensaje):
+    """Actualiza la última columna del archivo Excel con un mensaje de error."""
+    df.at[row_index, 'Error'] = mensaje
+    df.to_excel(r'C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/clientes.xlsx', index=False)
 
 def ingresar_modulo():
     """Ingresa al módulo específico del sistema de cuentas tributarias."""
@@ -88,12 +115,25 @@ def ingresar_modulo():
         driver.switch_to.window(window_handles[-1])
 
         try:
+            # Esperar y manejar el modal si aparece
+            WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, 'modal-content')))
+            modal = driver.find_element(By.CLASS_NAME, 'modal-content')
+            if modal.is_displayed():
+                WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, '//button[text()="Continuar"]'))).click()
+                time.sleep(5)
+        except:
+            # No hacer nada si el modal no aparece
+            pass
+
+        # Verificar mensaje de error de autenticación
+        try:
             error_message = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.TAG_NAME, 'pre')))
             if error_message.text == "Ha ocurrido un error al autenticar, intente nuevamente.":
                 driver.refresh()
                 time.sleep(5)
         except:
             pass
+
     except Exception as e:
         print(f"Error al ingresar al módulo: {e}")
 
@@ -155,17 +195,18 @@ def cerrar_sesion():
     except Exception as e:
         print(f"Error al cerrar sesión: {e}")
 
-def extraer_datos_nuevo(cuit_ingresar, cuit_representado, password, ubicacion_descarga, posterior, cliente):
+def extraer_datos_nuevo(cuit_ingresar, cuit_representado, password, ubicacion_descarga, posterior, cliente, indice):
     """Extrae datos para un nuevo usuario."""
     try:
-        iniciar_sesion(cuit_ingresar, password)
-        ingresar_modulo()
-        if seleccionar_cuit_representado(cuit_representado):
-            cantidad_faltas_presentacion = driver.find_element(By.NAME, "functor$1").get_attribute('value')
-            exportar_excel(ubicacion_descarga, cuit_representado, cliente, cantidad_faltas_presentacion)
-            if posterior == 0:
-                cerrar_sesion()
-            return cantidad_faltas_presentacion
+        control_sesion = iniciar_sesion(cuit_ingresar, password, indice)
+        if control_sesion:
+            ingresar_modulo()
+            if seleccionar_cuit_representado(cuit_representado):
+                cantidad_faltas_presentacion = driver.find_element(By.NAME, "functor$1").get_attribute('value')
+                exportar_excel(ubicacion_descarga, cuit_representado, cliente, cantidad_faltas_presentacion)
+                if posterior == 0:
+                    cerrar_sesion()
+                return cantidad_faltas_presentacion
     except Exception as e:
         print(f"Error al extraer datos para el nuevo usuario: {e}")
 
@@ -184,11 +225,13 @@ def extraer_datos(cuit_representado, ubicacion_descarga, posterior, cliente):
 resultados = []
 
 # Iterar sobre cada cliente
+indice = 0
 for cuit_ingresar, cuit_representado, password, download, posterior, anterior, cliente in zip(cuit_login_list, cuit_represent_list, password_list, download_list, posterior_list, anterior_list, clientes_list):
     if anterior == 0:
-        extraer_datos_nuevo(cuit_ingresar, cuit_representado, password, download, posterior, cliente)
+        extraer_datos_nuevo(cuit_ingresar, cuit_representado, password, download, posterior, cliente, indice)
     else:
         extraer_datos(cuit_representado, download, posterior, cliente)
+    indice = indice + 1
 
 # Crear la carpeta de salida para CSV si no existe
 os.makedirs(output_folder_csv, exist_ok=True)
