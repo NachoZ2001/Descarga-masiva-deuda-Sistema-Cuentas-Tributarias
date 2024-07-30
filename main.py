@@ -13,6 +13,7 @@ import time
 import pyautogui
 import os
 import glob
+import random
 import xlwings as xw
 
 # Definir rutas a las carpetas y archivos
@@ -37,10 +38,6 @@ clientes_list = df['Cliente'].tolist()
 # Configuración de opciones de Chrome
 options = Options()
 options.add_argument("--start-maximized")
-options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-options.add_experimental_option("excludeSwitches", ["enable-automation"])
-options.add_experimental_option('useAutomationExtension', False)
 
 # Configurar preferencias de descarga
 prefs = {
@@ -50,9 +47,25 @@ prefs = {
 }
 options.add_experimental_option("prefs", prefs)
 
+# Establecer la ubicación del ejecutable de Chrome
+options.binary_location = r"C:\Users\ignac\Downloads\chrome-win64\chrome-win64\chrome.exe"
+
 # Inicializar driver
 service = Service(ChromeDriverManager().install())
 driver = webdriver.Chrome(service=service, options=options)
+
+# Crear el archivo de resultados
+resultados = []
+
+def human_typing(element, text):
+    for char in str(text):
+        element.send_keys(char)
+        time.sleep(random.uniform(0.05, 0.3))
+
+def actualizar_excel(row_index, mensaje):
+    """Actualiza la última columna del archivo Excel con un mensaje de error."""
+    df.at[row_index, 'Error'] = mensaje
+    df.to_excel(r'C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/clientes.xlsx', index=False)
 
 def iniciar_sesion(cuit_ingresar, password, row_index):
     """Inicia sesión en el sitio web con el CUIT y contraseña proporcionados."""
@@ -62,7 +75,7 @@ def iniciar_sesion(cuit_ingresar, password, row_index):
         element.clear()
         time.sleep(5)
 
-        element.send_keys(cuit_ingresar)
+        human_typing(element, cuit_ingresar)
         driver.find_element(By.ID, 'F1:btnSiguiente').click()
         time.sleep(5)
 
@@ -75,8 +88,9 @@ def iniciar_sesion(cuit_ingresar, password, row_index):
         except:
             pass
 
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:password'))).send_keys(password)
-        time.sleep(5)
+        element_pass = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:password')))
+        human_typing(element_pass, password)
+        time.sleep(10)
         driver.find_element(By.ID, 'F1:btnIngresar').click()
         time.sleep(5)
 
@@ -95,17 +109,14 @@ def iniciar_sesion(cuit_ingresar, password, row_index):
         actualizar_excel(row_index, "Error al iniciar sesión")
         return False
 
-def actualizar_excel(row_index, mensaje):
-    """Actualiza la última columna del archivo Excel con un mensaje de error."""
-    df.at[row_index, 'Error'] = mensaje
-    df.to_excel(r'C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/clientes.xlsx', index=False)
-
 def ingresar_modulo():
     """Ingresa al módulo específico del sistema de cuentas tributarias."""
     try:
         WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.LINK_TEXT, "Ver todos"))).click()
         time.sleep(5)
-        driver.find_element(By.ID, 'buscadorInput').send_keys('SISTEMA DE CUENTAS TRIBUTARIAS')
+
+        element = driver.find_element(By.ID, 'buscadorInput')
+        human_typing(element, 'Sistema de Cuentas Tributarias') 
         time.sleep(5)
         WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, 'rbt-menu-item-0'))).click()
         time.sleep(10)
@@ -221,21 +232,6 @@ def extraer_datos(cuit_representado, ubicacion_descarga, posterior, cliente):
     except Exception as e:
         print(f"Error al extraer datos: {e}")
 
-# Crear el archivo de resultados
-resultados = []
-
-# Iterar sobre cada cliente
-indice = 0
-for cuit_ingresar, cuit_representado, password, download, posterior, anterior, cliente in zip(cuit_login_list, cuit_represent_list, password_list, download_list, posterior_list, anterior_list, clientes_list):
-    if anterior == 0:
-        extraer_datos_nuevo(cuit_ingresar, cuit_representado, password, download, posterior, cliente, indice)
-    else:
-        extraer_datos(cuit_representado, download, posterior, cliente)
-    indice = indice + 1
-
-# Crear la carpeta de salida para CSV si no existe
-os.makedirs(output_folder_csv, exist_ok=True)
-
 # Función para convertir Excel a CSV utilizando xlwings
 def excel_a_csv(input_folder, output_folder):
     for excel_file in glob.glob(os.path.join(input_folder, "*.xlsx")):
@@ -270,6 +266,18 @@ def obtener_faltas_presentacion(filename):
     base = os.path.basename(filename)
     faltas_presentacion = int(base.split('-')[2].strip())
     return faltas_presentacion
+
+# Iterar sobre cada cliente
+indice = 0
+for cuit_ingresar, cuit_representado, password, download, posterior, anterior, cliente in zip(cuit_login_list, cuit_represent_list, password_list, download_list, posterior_list, anterior_list, clientes_list):
+    if anterior == 0:
+        extraer_datos_nuevo(cuit_ingresar, cuit_representado, password, download, posterior, cliente, indice)
+    else:
+        extraer_datos(cuit_representado, download, posterior, cliente)
+    indice = indice + 1
+
+# Crear la carpeta de salida para CSV si no existe
+os.makedirs(output_folder_csv, exist_ok=True)
 
 # Convertir archivos Excel a CSV
 excel_a_csv(input_folder_excel, output_folder_csv)
