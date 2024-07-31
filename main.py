@@ -17,14 +17,14 @@ import random
 import xlwings as xw
 
 # Definir rutas a las carpetas y archivos
-input_folder_excel = "C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/Deudas"
-output_folder_csv = "C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/DeudasCSV"
-output_file_csv = "C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/Resumen_deudas.csv"
-output_file_xlsx = "C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/Resumen_deudas.xlsx"
+input_folder_excel = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/Deudas"
+output_folder_csv = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/DeudasCSV"
+output_file_csv = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/Resumen_deudas.csv"
+output_file_xlsx = "C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/Resumen_deudas.xlsx"
 fecha_especifica = '2024-03-31'
 
 # Leer el archivo Excel
-df = pd.read_excel(r'C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/clientes.xlsx')
+df = pd.read_excel(r'C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/clientes.xlsx')
 
 # Suposición de nombres de columnas
 cuit_login_list = df['CUIT para ingresar'].tolist()
@@ -47,9 +47,6 @@ prefs = {
 }
 options.add_experimental_option("prefs", prefs)
 
-# Establecer la ubicación del ejecutable de Chrome
-options.binary_location = r"C:\Users\ignac\Downloads\chrome-win64\chrome-win64\chrome.exe"
-
 # Inicializar driver
 service = Service(ChromeDriverManager().install())
 driver = webdriver.Chrome(service=service, options=options)
@@ -65,7 +62,7 @@ def human_typing(element, text):
 def actualizar_excel(row_index, mensaje):
     """Actualiza la última columna del archivo Excel con un mensaje de error."""
     df.at[row_index, 'Error'] = mensaje
-    df.to_excel(r'C:/Users/ignac/OneDrive/Escritorio/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/clientes.xlsx', index=False)
+    df.to_excel(r'C:/Program Files/Sublime Merge/Descarga-masiva-deuda-Sistema-de-Cuentas-Tributarias/data/input/clientes.xlsx', index=False)
 
 def iniciar_sesion(cuit_ingresar, password, row_index):
     """Inicia sesión en el sitio web con el CUIT y contraseña proporcionados."""
@@ -90,7 +87,7 @@ def iniciar_sesion(cuit_ingresar, password, row_index):
 
         element_pass = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:password')))
         human_typing(element_pass, password)
-        time.sleep(10)
+        time.sleep(15)
         driver.find_element(By.ID, 'F1:btnIngresar').click()
         time.sleep(5)
 
@@ -109,7 +106,7 @@ def iniciar_sesion(cuit_ingresar, password, row_index):
         actualizar_excel(row_index, "Error al iniciar sesión")
         return False
 
-def ingresar_modulo():
+def ingresar_modulo(cuit_ingresar, password):
     """Ingresa al módulo específico del sistema de cuentas tributarias."""
     try:
         WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.LINK_TEXT, "Ver todos"))).click()
@@ -120,10 +117,6 @@ def ingresar_modulo():
         time.sleep(5)
         WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, 'rbt-menu-item-0'))).click()
         time.sleep(10)
-
-        # Cambiar de pestaña
-        window_handles = driver.window_handles
-        driver.switch_to.window(window_handles[-1])
 
         try:
             # Esperar y manejar el modal si aparece
@@ -136,12 +129,34 @@ def ingresar_modulo():
             # No hacer nada si el modal no aparece
             pass
 
+        # Cambiar de pestaña
+        window_handles = driver.window_handles
+        driver.switch_to.window(window_handles[-1])
+
         # Verificar mensaje de error de autenticación
         try:
             error_message = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.TAG_NAME, 'pre')))
             if error_message.text == "Ha ocurrido un error al autenticar, intente nuevamente.":
                 driver.refresh()
                 time.sleep(5)
+        except:
+            pass
+
+        # Verificar si es necesario iniciar sesion nuevamente
+        try:
+            element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:username')))
+            element.clear()
+            time.sleep(5)
+
+            human_typing(element, cuit_ingresar)
+            driver.find_element(By.ID, 'F1:btnSiguiente').click()
+            time.sleep(5)
+
+            element_pass = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'F1:password')))
+            human_typing(element_pass, password)
+            time.sleep(15)
+            driver.find_element(By.ID, 'F1:btnIngresar').click()
+            time.sleep(5)
         except:
             pass
 
@@ -211,7 +226,7 @@ def extraer_datos_nuevo(cuit_ingresar, cuit_representado, password, ubicacion_de
     try:
         control_sesion = iniciar_sesion(cuit_ingresar, password, indice)
         if control_sesion:
-            ingresar_modulo()
+            ingresar_modulo(cuit_ingresar, password)
             if seleccionar_cuit_representado(cuit_representado):
                 cantidad_faltas_presentacion = driver.find_element(By.NAME, "functor$1").get_attribute('value')
                 exportar_excel(ubicacion_descarga, cuit_representado, cliente, cantidad_faltas_presentacion)
